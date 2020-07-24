@@ -1,0 +1,61 @@
+--SET QUOTED_IDENTIFIER ON|OFF
+--SET ANSI_NULLS ON|OFF
+--GO
+ALTER PROCEDURE spSnapLoad
+    @WhsCode VARCHAR(5),
+	@Yr INT,
+	@Pd INT,
+	@TBType VARCHAR(5)
+-- WITH ENCRYPTION, RECOMPILE, EXECUTE AS CALLER|SELF|OWNER| 'user_name'
+AS
+	WITH CTE AS (
+	SELECT T1.O_DocEntry,SUM(CASE WHEN T1.Operation = '-' THEN ISNULL(CASE WHEN @TBType = 'IS' THEN -T2.CurrAmt WHEN @TBType = 'BS' THEN -T2.EndAmt END,0) 
+								  WHEN T1.Operation = '+' THEN ISNULL(CASE WHEN @TBType = 'IS' THEN T2.CurrAmt WHEN @TBType = 'BS' THEN T2.EndAmt END,0) END) Amount
+	FROM (
+		SELECT T1.O_DocEntry,T1.DocEntry,T1.WhsCode,T1.Operation
+		FROM dbo.TB_TAGGING T1
+		LEFT JOIN dbo.BKFS T2 ON T1.O_DocEntry = T2.DocEntry AND T2.WhsCode = @WhsCode AND T2.Yr = @Yr AND T2.Pd = @Pd
+		WHERE T1.WhsCode = @WhsCode AND T2.DocEntry IS NULL) T1
+	LEFT JOIN BKFS T2 ON T1.DocEntry = T2.DocEntry AND T2.Yr = 2018 AND T2.Pd = 1 AND T2.WhsCode = T1.WhsCode 
+	GROUP BY T1.O_DocEntry
+	UNION ALL
+	SELECT T1.O_DocEntry,SUM(CASE WHEN T1.Operation = '-' THEN ISNULL(CASE WHEN @TBType = 'IS' THEN -T2.CurrAmt WHEN @TBType = 'BS' THEN -T2.EndAmt END,0) 
+								  WHEN T1.Operation = '+' THEN ISNULL(CASE WHEN @TBType = 'IS' THEN T2.CurrAmt WHEN @TBType = 'BS' THEN T2.EndAmt END,0) END) Amount
+	FROM (
+		SELECT T1.O_DocEntry,T1.DocEntry,T1.WhsCode,T1.Operation
+		FROM dbo.TB_TAGGING T1
+		LEFT JOIN dbo.BKFS T2 ON T1.O_DocEntry = T2.DocEntry AND T2.WhsCode = @WhsCode AND T2.Yr = @Yr AND T2.Pd = @Pd
+		WHERE T1.WhsCode = @WhsCode AND T2.DocEntry IS NOT NULL) T1
+	LEFT JOIN BKFS T2 ON T1.DocEntry = T2.DocEntry AND T2.Yr = @Yr AND T2.Pd = @Pd AND T2.WhsCode = T1.WhsCode
+	GROUP BY T1.O_DocEntry
+	)
+
+	SELECT T1.O_DocEntry,t2.RowNo,T2.Dscpt,T1.Amount,T3.isHeader,T3.isTotal
+	FROM CTE T1
+	INNER JOIN snap_Templates T2 ON T1.O_DocEntry = T2.DocEntry AND T2.WhsCode = @WhsCode AND T2.TBType = @TBType
+	LEFT JOIN (
+		SELECT O_DocEntry,MAX(isHeader) isHeader,MAX(isTotal) isTotal
+		FROM TB_TAGGING	
+		WHERE WhsCode = @WhsCode
+		GROUP BY O_DocEntry
+	) T3 ON T3.O_DocEntry = T2.DocEntry 
+	ORDER BY 2
+GO
+
+SELECT * FROM dbo.TB_TAGGING
+
+dbo.spSnapLoad @WhsCode = '028', -- varchar(5)
+               @Yr = 2018,       -- int
+               @Pd = 1,       -- int
+               @TBType = 'BS'   -- varchar(5)
+
+
+dbo.spSnapLoad @WhsCode = '028', -- varchar(5)
+               @Yr = 2018,       -- int
+               @Pd = 1,       -- intda
+               @TBType = 'IS'   -- varchar(5)
+
+
+
+
+
